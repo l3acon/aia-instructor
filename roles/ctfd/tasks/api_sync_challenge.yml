@@ -1,0 +1,78 @@
+---
+# Syncs flags and hints for a single challenge via the CTFd API.
+# Called from update-challenges.yml with loop_var: _challenge
+# Expects: _challenge, _ctfd_url, _api_headers, _name_to_id
+
+- name: "{{ _challenge.name }} | Get existing flags"
+  ansible.builtin.uri:
+    url: "{{ _ctfd_url }}/api/v1/challenges/{{ _name_to_id[_challenge.name] }}/flags"
+    method: GET
+    headers: "{{ _api_headers }}"
+    validate_certs: false
+  register: _current_flags
+
+- name: "{{ _challenge.name }} | Delete existing flags"
+  ansible.builtin.uri:
+    url: "{{ _ctfd_url }}/api/v1/flags/{{ item.id }}"
+    method: DELETE
+    headers: "{{ _api_headers }}"
+    validate_certs: false
+    status_code: [200]
+  loop: "{{ _current_flags.json.data }}"
+  loop_control:
+    label: "flag {{ item.id }}"
+  when: _current_flags.json.data | length > 0
+
+- name: "{{ _challenge.name }} | Create flags"
+  ansible.builtin.uri:
+    url: "{{ _ctfd_url }}/api/v1/flags"
+    method: POST
+    headers: "{{ _api_headers }}"
+    body_format: json
+    body:
+      challenge_id: "{{ _name_to_id[_challenge.name] }}"
+      type: "{{ item.type | default('static') }}"
+      content: "{{ item.content }}"
+      data: "{{ item.data | default('') }}"
+    validate_certs: false
+    status_code: [200, 201]
+  loop: "{{ _challenge.flags | default([]) }}"
+  loop_control:
+    label: "{{ item.content | truncate(40) }}"
+
+- name: "{{ _challenge.name }} | Get existing hints"
+  ansible.builtin.uri:
+    url: "{{ _ctfd_url }}/api/v1/challenges/{{ _name_to_id[_challenge.name] }}/hints"
+    method: GET
+    headers: "{{ _api_headers }}"
+    validate_certs: false
+  register: _current_hints
+
+- name: "{{ _challenge.name }} | Delete existing hints"
+  ansible.builtin.uri:
+    url: "{{ _ctfd_url }}/api/v1/hints/{{ item.id }}"
+    method: DELETE
+    headers: "{{ _api_headers }}"
+    validate_certs: false
+    status_code: [200]
+  loop: "{{ _current_hints.json.data }}"
+  loop_control:
+    label: "hint {{ item.id }}"
+  when: _current_hints.json.data | length > 0
+
+- name: "{{ _challenge.name }} | Create hints"
+  ansible.builtin.uri:
+    url: "{{ _ctfd_url }}/api/v1/hints"
+    method: POST
+    headers: "{{ _api_headers }}"
+    body_format: json
+    body:
+      challenge_id: "{{ _name_to_id[_challenge.name] }}"
+      content: "{{ item.content }}"
+      cost: "{{ item.cost }}"
+      type: standard
+    validate_certs: false
+    status_code: [200, 201]
+  loop: "{{ _challenge.hints | default([]) }}"
+  loop_control:
+    label: "cost={{ item.cost }}"

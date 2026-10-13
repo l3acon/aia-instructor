@@ -1,0 +1,166 @@
+# Important Links
+
+Island Challenges: [https://island-{{ project_name }}.{{ cluster_apps_domain }}](https://island-{{ project_name }}.{{ cluster_apps_domain }})
+
+OpenShift console: [https://console-openshift-console.{{ cluster_apps_domain }}](https://console-openshift-console.{{ cluster_apps_domain }})
+
+Gitea: [https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}](https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }})
+
+---
+
+# Survival Skills
+
+## Introduction
+
+Surviving and thriving on the island will require some critical
+OpenShift skills; most importantly, building, deploying and modifying
+applications.
+
+The following instructions are intended to get you past the island's
+*Warm Up* challenges.
+
+---
+
+## Table of Contents
+
+1. [Step 1: Prepare your private application repo](#step-1-prepare-your-private-application-repo)
+2. [Step 2: Build and deploy in OpenShift](#step-2-build-and-deploy-in-openshift)
+3. [Step 3: Modifying your application](#step-3-modifying-your-application)
+
+---
+
+## Step 1: Prepare your private application repo
+
+The "starter" account on gitea includes a number of starter
+application repos.  We'll be using the python starter app for the
+purposes of these instructions.
+
+First you'll need to connect to gitea and login using your game
+credentials.   The login link is on the top right of the screen.
+
+Once you log in, you'll be looking at your gitea account contents.  Of
+course, there are no git repos in your account yet.  We will have to
+copy one of the starter repos in here.
+
+Go to the `starter` account at https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/starter to
+see the list of available choices.
+
+Select the `python-starter` repo, and copy the `HTTPS` URL by clicking
+on the copy icon to the left of the URL.
+
+Now go back to your own account and select `New Migration` in the top
+right of the browser window.
+
+Now select `gitea` from the list of possible migration sources.
+
+Paste the `python-starter` URL into `Migrate / Clone from URL` field,
+and check the `Make Repository Private` box.  Now click on the green
+`Migrate Repository` button.  This will copy the `python-starter` repo
+into your private gitea account.
+
+You will need the repo URL for this repository in order to tell
+OpenShift how to build it.  So just like before, press the copy button
+to the right of the blue `HTTPS` field.
+
+---
+
+## Step 2: Build and Deploy in OpenShift
+
+Now that we have a private copy of one of the starter applications, we
+can build and deploy it on OpenShift.  First, you'll need to login to
+the OpenShift console using your game credentials.
+
+You're now looking at the *Developer Perspective* of the OCP console.
+You can go through the tour if you like, or just `Skip tour`.
+
+You have an OpenShift project assigned to you already.  In this case,
+we are `player1`.  Select the `player1` project from this list.
+
+The *Add* page provides many options for adding application resources
+to your project namespace.  We're going to use the `Import from Git`
+option to bring our application code over from gitea.
+
+We'll need to fill in a few fields on this `Import from Git` page.
+First, paste the URL for your starter repo into `Git Repo URL` field.
+
+Next, because it's a private repo, we'll need to give OpenShift the
+credentials (your username/password) to access the private report.
+Click on the `Advanced Git options` drop-down button, and go to the
+`Source Secret` section.  Click on `Select Secret name` and `Create
+new Secret`.
+
+Enter a secret a name (`git` in this example), followed by your
+username and password for basic authentication.  Clicking on `Create`
+will create the kubernetes Secret object that OpenShift will use to
+access your private repository.  Be sure to use this same secret any
+time you want to import a private git repo into your OpenShift
+project.
+
+Scrolling down, you'll see a number of builder container images.
+Select the image that matches your application (python, in our
+example).  This is an s2i container image that knows how to build
+applications from source.
+
+Finally, we need to specify a unique `Name` for the application.
+Importantly, OpenShift will use this name to automatically create a
+Route for network ingress.  For this example, we're using `hello`.
+When OpenShift creates your application in this manner, it will
+automatically create the route `hello-playerX.{{ cluster_apps_domain }}`,
+where `playerX` is your project name / namespace.
+
+Now click on the `Create` button.
+
+You will now be taken to the developer Topology view.  You can always
+get back to this view by selecting Topology on the left hand side of
+the web console.
+
+The glyph in the center of the screen represents your python
+application.  Click on `hello` at the bottom and a sidebar will appear
+with important information and links.
+
+From here you can see:
+* the list of builds and their logs.
+* the list of deployed pods.
+* active routes for ingress.
+* a link to the actual Deployment or DeploymentConfig (the blue `D` at the top)
+
+Each one of these links take you to different parts of the OpenShift
+console for accessing information, editing settings, and controlling
+your application.  Take some time to explore them, while remembering
+that you can always get back to the Topology view by using the sidebar
+on the left.
+
+Also note that the button on the top right of the python logo is a
+link to your route.  Once the application has been built and deployed,
+clicking on that link should show "Hello World".
+
+---
+
+## Step 3: Modifying your application
+
+Now that your service is running in OpenShift, you'll want to make a
+change and deploy the new version.  First, let's back to our
+application repo in gitea.
+
+We want to change the "Hello World" message to "Bonjour Monde".  The
+code for displaying "Hello World" is found in `app.py`.  Click on
+`app.py` to view the code.
+
+Gitea has a nice built-in web-based editor you can use to make your
+change.  Click on the pencil icon near the top right of your code
+window to bring up the editor.  Now go to line 8 of the python program
+and make the necessary change as below.
+
+Once you've edited your code, you need to commit this change back into
+gitea's git repo.  Scroll down to find the green `Commit Changes`
+button, and click on that.
+
+Now that you've changed your code in gitea, switch back to your
+project on OpenShift.  Bring up the sidebar on the right again, and
+find the `Start Build` button.  Clicking on that should start a new
+build, where it will pull your code from git and create a new
+container image.  Once built, it will automatically deploy the new
+version, and clicking on the route should bring up `Bonjour Monde` in
+your browser.
+
+---

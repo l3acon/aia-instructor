@@ -1,0 +1,78 @@
+---
+# Advanced challenges that require solution verification.
+# These use the verifier service — players run their solution, then hit the
+# /validate endpoint to receive a dynamic flag.
+ctfd_challenges_advanced:
+  - name: "First Landing: Deploy a File"
+    description: >-
+      The Monolith's base hums with a faint vibration—it's waiting for
+      a signal, a proof that you can command the machines around you.
+      Before you can unlock its deeper secrets, you must demonstrate the
+      most fundamental act of automation: placing a file on a remote
+      system exactly where it needs to be, with exactly the right
+      contents.
+
+
+      ## Objective
+
+
+      Write an Ansible playbook that deploys a file to your managed node
+      at the following path:
+
+
+      `/opt/island/beacon.txt`
+
+
+      The file must contain exactly:
+
+
+      `the island welcomes you`
+
+
+      ## Validation
+
+
+      Once your playbook has run successfully, validate your solution:
+
+
+      ```
+
+      curl -X POST https://<verifier-url>/validate \
+        -H 'Content-Type: application/json' \
+        -d '{"token": "YOUR_TOKEN", "challenge": "deploy-file"}'
+
+      ```
+
+
+      Replace `YOUR_TOKEN` with the verification token from your handout.
+      On success you will receive a flag to submit here.
+    value: 50
+    category: Automation Basics
+    state: visible
+    prerequisites:
+      - You found a treasure chest
+    flags:
+      - content: "FLAG\\{[0-9a-f]{12}\\}"
+        type: regex
+        data: case_insensitive
+    hints:
+      - content: >-
+          Use the `ansible.builtin.copy` module with the `content` parameter
+          to write file contents directly, or use `ansible.builtin.template`.
+        cost: 5
+      - content: >-
+          Your playbook should target your managed node and use privilege
+          escalation (`become: true`) since `/opt` requires root to write into.
+          Example structure:
+
+          ```yaml
+
+          - hosts: all
+            become: true
+            tasks:
+              - ansible.builtin.copy:
+                  content: "the island welcomes you"
+                  dest: /opt/island/beacon.txt
+
+          ```
+        cost: 15

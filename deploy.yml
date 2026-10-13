@@ -1,0 +1,108 @@
+---
+- name: Deploy CTFd Island Challenge
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  pre_tasks:
+    - name: Load ROSA resource claim
+      ansible.builtin.include_vars:
+        file: rosa.creds
+        name: rosa_claim
+
+    - name: Set ROSA credentials from provision data
+      ansible.builtin.set_fact:
+        rosa: "{{ rosa_claim.status.summary.provision_data }}"
+
+    - name: Load workshop credentials
+      ansible.builtin.include_vars:
+        file: workshop.creds
+        name: workshop
+
+    - name: Set player count from workshop
+      ansible.builtin.set_fact:
+        player_count: "{{ workshop.status.userCount.total }}"
+
+    - name: Check for cached player credentials
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/player.creds"
+      register: _player_creds_file
+
+    - name: Load cached player credentials
+      when: _player_creds_file.stat.exists
+      block:
+        - name: Read player.creds
+          ansible.builtin.include_vars:
+            file: "{{ playbook_dir }}/player.creds"
+            name: _cached_creds
+
+        - name: Set player passwords from cache
+          ansible.builtin.set_fact:
+            player_passwords: "{{ _cached_creds.players }}"
+            player_tokens: "{{ _cached_creds.tokens | default({}) }}"
+
+        - name: Report using cached credentials
+          ansible.builtin.debug:
+            msg: "Loaded {{ player_passwords | length }} cached player credentials from player.creds"
+
+    - name: Generate new player credentials
+      when: not _player_creds_file.stat.exists
+      block:
+        - name: Generate random password for each player
+          ansible.builtin.set_fact:
+            player_passwords: >-
+              {{ player_passwords | default({}) | combine({
+                'player' ~ item: lookup('password', '/dev/null length=' ~ player_password_length ~ ' chars=' ~ player_password_chars)
+              }) }}
+          loop: "{{ range(1, player_count | int + 1) | list }}"
+
+        - name: Generate verification token for each player
+          ansible.builtin.set_fact:
+            player_tokens: >-
+              {{ player_tokens | default({}) | combine({
+                'player' ~ item: lookup('password', '/dev/null length=8 chars=hexdigits') | lower
+              }) }}
+          loop: "{{ range(1, player_count | int + 1) | list }}"
+
+        - name: Save player credentials to player.creds
+          ansible.builtin.copy:
+            content: |
+              ---
+              players:
+              {% for name, password in player_passwords.items() | sort %}
+                {{ name }}: {{ password }}
+              {% endfor %}
+              tokens:
+              {% for name, token in player_tokens.items() | sort %}
+                {{ name }}: {{ token }}
+              {% endfor %}
+            dest: "{{ playbook_dir }}/player.creds"
+            mode: "0600"
+
+        - name: Report generated new credentials
+          ansible.builtin.debug:
+            msg: "Generated {{ player_passwords | length }} new player credentials → player.creds"
+
+    - name: Login to OpenShift
+      ansible.builtin.command:
+        argv:
+          - oc
+          - login
+          - "{{ rosa.rosa_openshift_api_url }}"
+          - "--username={{ rosa.rosa_openshift_admin_user }}"
+          - "--password={{ rosa.rosa_openshift_admin_password }}"
+          - --insecure-skip-tls-verify=true
+      changed_when: true
+
+    - name: Display deployment configuration
+      ansible.builtin.debug:
+        msg: >-
+          Deploying for {{ player_count }} players
+          (player1..player{{ player_count }})
+          with unique passwords on
+          {{ rosa.rosa_openshift_api_url }}
+
+  roles:
+    - ctfd
+    - role: verifier
+      tags: [verifier]

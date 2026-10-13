@@ -1,0 +1,72 @@
+---
+# K8s resource names
+mysql_deployment_name: ctfd-mysql-db
+mysql_service_name: ctfd-mysql-db
+mysql_pvc_name: ctfd-mysql-db-pv
+
+redis_deployment_name: ctfd-redis-cache
+redis_service_name: ctfd-redis-cache
+redis_pvc_name: ctfd-redis-cache-pv
+
+ctfd_deployment_name: ctfd
+ctfd_service_name: ctfd
+ctfd_logs_pvc_name: ctf-pv-logs
+ctfd_uploads_pvc_name: ctfd-pv-uploads
+ctfd_route_name: island
+
+gitea_namespace: gitea
+
+# Morse code mapping
+morse_code_csv: |
+  !,-.-.--
+  $,...-..-
+  &,.-...
+  ',.----.
+  (,-.--.
+  ),-.--.-
+  +,.-.-.
+  -,-....-
+  .,.-.-.-
+  /,-..-.
+  0,-----
+  1,.----
+  2,..---
+  3,...--
+  4,....-
+  5,.....
+  6,-....
+  7,--...
+  8,---..
+  9,----.
+  :,---...
+  ;,-.-.-.
+  =,-...-
+  ?,..--..
+  @,.--.-.
+  A,.-
+  B,-...
+  C,-.-.
+  D,-..
+  E,.
+  F,..-.
+  G,--.
+  H,....
+  I,..
+  J,.---
+  K,-.-
+  L,.-..
+  M,--
+  N,-.
+  O,---
+  P,.--.
+  Q,--.-
+  R,.-.
+  S,...
+  T,-
+  U,..-
+  V,...-
+  W,.--
+  X,-..-
+  Y,-.--
+  Z,--..
+  _,..--.-

@@ -1,0 +1,161 @@
+---
+- name: Generate CTFd admin password hash
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "from passlib.hash import bcrypt_sha256; print(bcrypt_sha256.hash('{{ ctfd_admin_password }}'))"
+  register: _admin_hash_cmd
+  changed_when: false
+
+- name: Set CTFd admin password hash
+  ansible.builtin.set_fact:
+    _ctfd_admin_password_hash: "{{ _admin_hash_cmd.stdout }}"
+
+- name: Generate CTFd player password hashes
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "from passlib.hash import bcrypt_sha256; print(bcrypt_sha256.hash('{{ player_passwords['player' ~ item] }}'))"
+  loop: "{{ range(1, player_count | int + 1) | list }}"
+  register: _player_hash_results
+  changed_when: false
+
+- name: Build player password hash lookup
+  ansible.builtin.set_fact:
+    _ctfd_player_password_hashes: >-
+      {{ _ctfd_player_password_hashes | default({}) | combine({
+        'player' ~ item.item: item.stdout
+      }) }}
+  loop: "{{ _player_hash_results.results }}"
+  loop_control:
+    label: "player{{ item.item }}"
+
+- name: Load challenge definitions
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/challenges.yml"
+
+- name: Load advanced challenge definitions
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/challenges_advanced.yml"
+
+- name: Merge all challenge definitions
+  ansible.builtin.set_fact:
+    ctfd_challenges: "{{ ctfd_challenges + ctfd_challenges_advanced }}"
+
+- name: Build challenge name to ID mapping
+  ansible.builtin.set_fact:
+    _challenge_name_to_id: >-
+      {{ dict(ctfd_challenges | map(attribute='name')
+              | zip(range(1, ctfd_challenges | length + 1))) }}
+
+- name: Create temporary build directory
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: ctfd-archive-
+  register: _archive_tmpdir
+
+- name: Set archive build path
+  ansible.builtin.set_fact:
+    _build_dir: "{{ _archive_tmpdir.path }}"
+
+- name: Create archive directory structure
+  ansible.builtin.file:
+    path: "{{ _build_dir }}/{{ item }}"
+    state: directory
+  loop:
+    - db
+    - uploads
+
+- name: Template CTFd database files from challenge definitions
+  ansible.builtin.template:
+    src: "ctfd-config/db/{{ item }}.yml.j2"
+    dest: "{{ _build_dir }}/db/{{ item }}.yml"
+  loop:
+    - challenges
+    - config
+    - flags
+    - hints
+    - users
+
+- name: Copy static YAML db files to build directory
+  ansible.builtin.copy:
+    src: "ctfd-config/db/{{ item }}.yml"
+    dest: "{{ _build_dir }}/db/{{ item }}.yml"
+  loop:
+    - alembic_version
+    - awards
+    - challenge_topics
+    - comments
+    - dynamic_challenge
+    - field_entries
+    - fields
+    - files
+    - notifications
+    - pages
+    - solves
+    - submissions
+    - tags
+    - teams
+    - tokens
+    - topics
+    - tracking
+    - unlocks
+
+- name: Find all YAML db files in build directory
+  ansible.builtin.find:
+    paths: "{{ _build_dir }}/db"
+    patterns: "*.yml"
+  register: _yaml_db_files
+
+- name: Convert YAML db files to JSON
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_nice_json }}"
+    dest: "{{ item.path | regex_replace('\\.yml$', '.json') }}"
+  loop: "{{ _yaml_db_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Remove YAML source files from build directory
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _yaml_db_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Copy upload files to archive
+  ansible.builtin.copy:
+    src: ctfd-config/uploads/
+    dest: "{{ _build_dir }}/uploads/"
+
+- name: Resize banner image for CTFd
+  when: ctfd_banner_src | default('') | length > 0
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        from PIL import Image
+        img = Image.open("{{ ctfd_banner_src }}")
+        img.thumbnail(({{ ctfd_banner_max_width }}, {{ ctfd_banner_max_width }}), Image.LANCZOS)
+        img.save("{{ _build_dir }}/uploads/{{ ctfd_banner_upload_path }}", optimize=True)
+  changed_when: true
+
+- name: Create CTFd archive
+  community.general.archive:
+    path: "{{ _build_dir }}/"
+    dest: "{{ ctfd_archive_path }}"
+    format: zip
+    remove: false
+
+- name: Clean up temporary build directory
+  ansible.builtin.file:
+    path: "{{ _build_dir }}"
+    state: absent
+
+- name: Report archive location
+  ansible.builtin.debug:
+    msg: "CTFd archive created at {{ ctfd_archive_path }}"
+    verbosity: 1

@@ -1,0 +1,219 @@
+---
+- name: Install Gitea operator
+  ansible.builtin.command:
+    cmd: oc apply -k https://github.com/rhpds/gitea-operator/OLMDeploy
+  changed_when: true
+
+- name: Create gitea namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ gitea_namespace }}"
+    state: present
+    wait: true
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create Gitea custom configmap
+  kubernetes.core.k8s:
+    namespace: "{{ gitea_namespace }}"
+    state: present
+    definition: "{{ lookup('template', 'gitea-configmap.yml.j2') | from_yaml }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create Gitea instance
+  kubernetes.core.k8s:
+    namespace: "{{ gitea_namespace }}"
+    definition: "{{ _gitea_cr | from_yaml }}"
+  vars:
+    _gitea_cr: |
+      apiVersion: pfe.rhpds.com/v1
+      kind: Gitea
+      metadata:
+        name: gitea
+      spec:
+        giteaImageTag: "{{ gitea_image_tag }}"
+        giteaVolumeSize: "{{ gitea_volume_size }}"
+        giteaSsl: true
+        giteaAdminUser: "{{ gitea_admin_user }}"
+        giteaAdminPassword: "{{ gitea_admin_password }}"
+        giteaAdminEmail: "{{ gitea_admin_email }}"
+        giteaAdminPasswordLength: 32
+        giteaCreateUsers: true
+        giteaGenerateUserFormat: "player%d"
+        giteaUserNumber: {{ player_count | int }}
+        giteaUserPassword: "OperatorPlaceholder1"
+        giteaDisableRegistration: true
+        giteaConfigMapName: custom-gitea-config
+        giteaHostname: "gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}"
+        postgresqlSetup: true
+        postgresqlVolumeSize: "{{ gitea_postgresql_volume_size }}"
+        giteaPostgresqlServiceName: postgresql-gitea
+        giteaPostgresqlDatabaseName: "{{ gitea_postgresql_database }}"
+        giteaPostgresqlUser: "{{ gitea_postgresql_user }}"
+        giteaPostgresqlPassword: "{{ gitea_postgresql_password }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Wait for Gitea pod to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ gitea_namespace }}"
+    label_selectors:
+      - app=gitea
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 600
+  register: _gitea_pods
+  retries: 10
+  delay: 30
+  until: _gitea_pods.resources | length > 0
+
+- name: Wait for Gitea admin API to be ready
+  ansible.builtin.uri:
+    url: "https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/api/v1/user"
+    method: GET
+    validate_certs: false
+    user: "{{ gitea_admin_user }}"
+    password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  retries: 30
+  delay: 10
+  register: _gitea_admin_check
+  until: _gitea_admin_check.status == 200
+
+- name: Create starter Gitea user
+  ansible.builtin.uri:
+    url: "https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/api/v1/admin/users"
+    method: POST
+    body_format: json
+    validate_certs: false
+    user: "{{ gitea_admin_user }}"
+    password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    status_code: [201, 422]
+    body:
+      email: "{{ gitea_starter_email }}"
+      login_name: "{{ gitea_starter_user }}"
+      must_change_password: false
+      password: "{{ gitea_starter_password }}"
+      send_notify: false
+      username: "{{ gitea_starter_user }}"
+  retries: 5
+  delay: 10
+
+- name: Set Gitea player passwords via API
+  ansible.builtin.uri:
+    url: "https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/api/v1/admin/users/player{{ item }}"
+    method: PATCH
+    body_format: json
+    validate_certs: false
+    user: "{{ gitea_admin_user }}"
+    password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    status_code: [200]
+    body:
+      login_name: "player{{ item }}"
+      password: "{{ player_passwords['player' ~ item] }}"
+      must_change_password: false
+  loop: "{{ range(1, player_count | int + 1) | list }}"
+  retries: 3
+  delay: 5
+
+- name: Get starter user info from Gitea API
+  ansible.builtin.uri:
+    url: "https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/api/v1/users/{{ gitea_starter_user }}"
+    method: GET
+    validate_certs: false
+    user: "{{ gitea_admin_user }}"
+    password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    return_content: true
+  register: _starter_user_info
+
+- name: Set starter user ID
+  ansible.builtin.set_fact:
+    _starter_id: "{{ _starter_user_info.json.id }}"
+
+- name: Fork starter repos into Gitea
+  ansible.builtin.uri:
+    url: "https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/api/v1/repos/migrate"
+    method: POST
+    body_format: json
+    validate_certs: false
+    user: "{{ gitea_starter_user }}"
+    password: "{{ gitea_starter_password }}"
+    force_basic_auth: true
+    status_code: [201, 409]
+    body: "{{ _migrate_body | from_yaml }}"
+  vars:
+    _migrate_body: |
+      clone_addr: "{{ item.url }}"
+      repo_name: "{{ item.name }}"
+      uid: {{ _starter_id | int }}
+      mirror: false
+      private: false
+      issues: false
+      milestones: false
+  loop: "{{ starter_repos }}"
+
+- name: Clone repos into each player's Gitea account
+  ansible.builtin.uri:
+    url: "https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/api/v1/repos/migrate"
+    method: POST
+    body_format: json
+    validate_certs: false
+    user: "player{{ item.0 }}"
+    password: "{{ player_passwords['player' ~ item.0] }}"
+    force_basic_auth: true
+    status_code: [201, 409]
+    body:
+      clone_addr: "{{ item.1.url }}"
+      repo_name: "{{ item.1.name }}"
+      mirror: false
+      private: false
+      issues: false
+      milestones: false
+  loop: "{{ range(1, player_count | int + 1) | list | product(player_repos) | list }}"
+  loop_control:
+    label: "player{{ item.0 }}/{{ item.1.name }}"
+  retries: 3
+  delay: 5
+
+- name: Create INSTRUCTIONS repo in Gitea
+  ansible.builtin.uri:
+    url: "https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/api/v1/user/repos"
+    method: POST
+    body_format: json
+    validate_certs: false
+    user: "{{ gitea_starter_user }}"
+    password: "{{ gitea_starter_password }}"
+    force_basic_auth: true
+    status_code: [201, 409]
+    body:
+      name: INSTRUCTIONS
+      description: Instructions Repository
+      private: false
+      auto_init: true
+      default_branch: main
+
+- name: Upload README.md to INSTRUCTIONS repo
+  ansible.builtin.uri:
+    url: "https://gitea-{{ gitea_namespace }}.{{ cluster_apps_domain }}/api/v1/repos/{{ gitea_starter_user }}/INSTRUCTIONS/contents/README.md"
+    method: PUT
+    body_format: json
+    validate_certs: false
+    user: "{{ gitea_starter_user }}"
+    password: "{{ gitea_starter_password }}"
+    force_basic_auth: true
+    status_code: [200, 201]
+    body:
+      message: "Add instructions"
+      content: "{{ lookup('template', 'starter-readme.md.j2') | b64encode }}"
+  register: _readme_upload
+  failed_when: _readme_upload.status not in [200, 201, 422]

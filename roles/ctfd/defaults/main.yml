@@ -1,0 +1,91 @@
+---
+# CTFd project namespace
+project_name: ctfd
+
+# Player configuration
+player_count: 2
+player_password_length: 8
+player_password_chars: "abcdefghijkmnopqrstuvwxyz,ABCDEFGHJKLMNPQRSTUVWXYZ,23456789"
+
+# CTFd instance
+ctfd_name: Island Adventure
+ctfd_description: Ansible Island CTF Challenge
+
+# CTFd admin account
+ctfd_admin_username: admin
+ctfd_admin_password: supersecret123!
+ctfd_admin_email: admin@example.com
+
+# CTFd application
+ctfd_image_tag: "3.7.7"
+
+# MySQL
+mysql_image: "mariadb:10.4.12"
+mysql_database: ctfd
+mysql_user: ctfd
+mysql_password: ctfd
+mysql_root_password: ctfd
+mysql_pvc_size: 1Gi
+
+# Redis
+redis_image: "redis:4"
+redis_pvc_size: 1Gi
+
+# CTFd PVC sizes
+ctfd_logs_pvc_size: 1Gi
+ctfd_uploads_pvc_size: 1Gi
+
+# Gitea
+gitea_admin_user: gitadmin
+gitea_admin_password: supersecret123!
+gitea_admin_email: admin@example.com
+gitea_user_password: openshift
+gitea_image_tag: "1.20.1"
+gitea_user_count: 100
+gitea_volume_size: 4Gi
+gitea_postgresql_volume_size: 4Gi
+gitea_postgresql_user: giteauser
+gitea_postgresql_password: giteapassword
+gitea_postgresql_database: giteadb
+
+# Starter repos to fork into gitea
+starter_repos:
+  - url: https://github.com/catalyst-ctfd/python-starter.git
+    name: python-starter
+  - url: https://github.com/catalyst-ctfd/node-starter.git
+    name: node-starter
+  - url: https://github.com/catalyst-ctfd/springboot-starter.git
+    name: springboot-starter
+  - url: https://github.com/catalyst-ctfd/quarkus-starter.git
+    name: quarkus-starter
+
+# Repos cloned into each player's Gitea account
+player_repos:
+  - url: https://github.com/l3acon/ansible-challenge.git
+    name: ansible-challenge
+
+# Starter user for shared gitea resources
+gitea_starter_user: starter
+gitea_starter_password: redhat123
+gitea_starter_email: starter@example.com
+
+# Challenge data
+treasure_key_content: "MjcwNTYK"
+treasure_map_content: "eC1tYXJrcy10aGUtc3BvdAo="
+treasure_key_image: "registry.access.redhat.com/ubi8/httpd-24:1-274.1692780861"
+treasure_key_init_image: "registry.redhat.io/openshift4/ose-cli"
+
+# CTFd banner image
+ctfd_banner_src: "{{ playbook_dir }}/handouts/banner.png"
+ctfd_banner_max_width: 960
+ctfd_banner_upload_path: "7c4d437d1dc2b13816fe3f71d8361708/catalyst-logo.png"
+
+# CTFd archive output path
+ctfd_archive_path: "{{ playbook_dir }}/ctfd-upload-me.zip"
+
+# Cluster domain (auto-discovered from OpenShift Ingress config if not set)
+# cluster_domain: cluster-xyz.sandbox.opentlc.com
+
+# k8s retry settings
+k8s_retries: 20
+k8s_retry_delay: 15

@@ -1,0 +1,19 @@
+# Vault password (NEVER commit this)
+.vault-password
+
+# Credential files
+*.creds
+rosa.creds
+player.creds
+workshop.creds
+
+# Build artifacts
+*.zip
+ctfd-upload-me.zip
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store

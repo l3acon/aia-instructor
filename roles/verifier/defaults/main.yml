@@ -1,0 +1,17 @@
+---
+verifier_namespace: "{{ project_name }}"
+verifier_app_name: verifier
+verifier_route_name: verifier
+verifier_image: "{{ verifier_registry }}/{{ verifier_image_name }}:{{ verifier_image_tag }}"
+verifier_registry: "image-registry.openshift-image-registry.svc:5000/{{ verifier_namespace }}"
+verifier_image_name: solution-verifier
+verifier_image_tag: latest
+verifier_replicas: 1
+verifier_port: 8080
+
+verifier_host_pattern: "{player}.{domain}"
+verifier_ssh_user_pattern: "{player}"
+verifier_ssh_port: 22
+
+# HMAC secret for generating dynamic flags (override at deploy time)
+verifier_hmac_secret: "{{ lookup('password', '/dev/null length=32 chars=hexdigits') | lower }}"

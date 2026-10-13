@@ -1,0 +1,324 @@
+---
+# Usage:
+#   ansible-playbook update-challenges.yml
+#
+# Updates CTFd challenges, flags, hints, and prerequisites via the API
+# without performing a full database restore. Requires a running CTFd instance.
+
+- name: Update CTFd challenges via API
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars_files:
+    - roles/ctfd/defaults/main.yml
+    - roles/ctfd/vars/main.yml
+    - roles/ctfd/vars/challenges.yml
+    - roles/ctfd/vars/challenges_advanced.yml
+
+  pre_tasks:
+    - name: Merge all challenge definitions
+      ansible.builtin.set_fact:
+        ctfd_challenges: "{{ ctfd_challenges + ctfd_challenges_advanced }}"
+
+    - name: Load ROSA resource claim
+      ansible.builtin.include_vars:
+        file: rosa.creds
+        name: rosa_claim
+
+    - name: Set ROSA credentials from provision data
+      ansible.builtin.set_fact:
+        rosa: "{{ rosa_claim.status.summary.provision_data }}"
+
+    - name: Login to OpenShift
+      ansible.builtin.command:
+        argv:
+          - oc
+          - login
+          - "{{ rosa.rosa_openshift_api_url }}"
+          - "--username={{ rosa.rosa_openshift_admin_user }}"
+          - "--password={{ rosa.rosa_openshift_admin_password }}"
+          - --insecure-skip-tls-verify=true
+      changed_when: false
+
+    - name: Get cluster ingress config
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: Ingress
+        name: cluster
+      register: _ingress_config
+
+    - name: Set cluster apps domain
+      ansible.builtin.set_fact:
+        cluster_apps_domain: "{{ _ingress_config.resources[0].spec.domain }}"
+
+  tasks:
+    - name: Set CTFd base URL
+      ansible.builtin.set_fact:
+        _ctfd_url: "https://{{ ctfd_route_name }}-{{ project_name }}.{{ cluster_apps_domain }}"
+
+    # ── Authenticate and obtain API token ──────────────────────────
+
+    - name: Create temporary cookie jar
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .cookies
+      register: _cookie_jar
+
+    - name: Wait for CTFd to be healthy
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/healthcheck"
+        method: GET
+        validate_certs: false
+        status_code: [200]
+      retries: 30
+      delay: 5
+      register: _ctfd_health
+      until: _ctfd_health.status == 200
+
+    - name: Fetch login page
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --cookie-jar
+          - "{{ _cookie_jar.path }}"
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - "{{ _ctfd_url }}/login"
+      register: _login_page
+      changed_when: false
+
+    - name: Extract nonce from login page
+      ansible.builtin.set_fact:
+        _login_nonce: "{{ _login_page.stdout | regex_search('name=\"nonce\"[^>]*value=\"([^\"]+)\"', '\\1') | first }}"
+
+    - name: Login to CTFd as admin
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --output
+          - /dev/null
+          - --write-out
+          - "%{http_code}"
+          - --cookie-jar
+          - "{{ _cookie_jar.path }}"
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - --location
+          - -d
+          - "name={{ ctfd_admin_username | urlencode }}&password={{ ctfd_admin_password | urlencode }}&nonce={{ _login_nonce }}"
+          - "{{ _ctfd_url }}/login"
+      register: _login_result
+      changed_when: false
+      failed_when: _login_result.stdout not in ['200', '302']
+
+    - name: Fetch admin page for CSRF nonce
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - "{{ _ctfd_url }}/admin/challenges"
+      register: _admin_page
+      changed_when: false
+
+    - name: Extract CSRF nonce
+      ansible.builtin.set_fact:
+        _csrf_nonce: "{{ _admin_page.stdout | regex_search(\"csrfNonce.{0,10}?([0-9a-f]{64})\", '\\1') | first }}"
+
+    - name: Generate API access token
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - -H
+          - "Content-Type: application/json"
+          - -H
+          - "CSRF-Token: {{ _csrf_nonce }}"
+          - -d
+          - "{}"
+          - "{{ _ctfd_url }}/api/v1/tokens"
+      register: _token_result
+      changed_when: true
+
+    - name: Set API token
+      ansible.builtin.set_fact:
+        _api_token: "{{ (_token_result.stdout | from_json).data.value }}"
+        _api_token_id: "{{ (_token_result.stdout | from_json).data.id }}"
+
+    - name: Set reusable API headers
+      ansible.builtin.set_fact:
+        _api_headers:
+          Authorization: "Token {{ _api_token }}"
+          Content-Type: "application/json"
+
+    - name: Clean up cookie jar
+      ansible.builtin.file:
+        path: "{{ _cookie_jar.path }}"
+        state: absent
+
+    # ── Fetch existing challenges ──────────────────────────────────
+
+    - name: Get existing challenges from CTFd
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/api/v1/challenges?view=admin"
+        method: GET
+        headers: "{{ _api_headers }}"
+        validate_certs: false
+      register: _existing_challenges
+
+    - name: Build existing challenge lookup by name
+      ansible.builtin.set_fact:
+        _existing_by_name: >-
+          {{ dict(_existing_challenges.json.data
+              | map(attribute='name')
+              | zip(_existing_challenges.json.data)) }}
+
+    # ── Create or update challenges ────────────────────────────────
+
+    - name: Create new challenges
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/api/v1/challenges"
+        method: POST
+        headers: "{{ _api_headers }}"
+        body_format: json
+        body:
+          name: "{{ item.name }}"
+          description: "{{ item.description }}"
+          value: "{{ item.value }}"
+          category: "{{ item.category }}"
+          type: "{{ item.type | default('standard') }}"
+          state: "{{ item.state | default('visible') }}"
+          max_attempts: "{{ item.max_attempts | default(0) }}"
+        validate_certs: false
+        status_code: [200, 201]
+      loop: "{{ ctfd_challenges }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.name not in _existing_by_name
+
+    - name: Update existing challenges
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/api/v1/challenges/{{ _existing_by_name[item.name].id }}"
+        method: PATCH
+        headers: "{{ _api_headers }}"
+        body_format: json
+        body:
+          name: "{{ item.name }}"
+          description: "{{ item.description }}"
+          value: "{{ item.value }}"
+          category: "{{ item.category }}"
+          type: "{{ item.type | default('standard') }}"
+          state: "{{ item.state | default('visible') }}"
+          max_attempts: "{{ item.max_attempts | default(0) }}"
+        validate_certs: false
+        status_code: [200]
+      loop: "{{ ctfd_challenges }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.name in _existing_by_name
+
+    # ── Refresh and build final ID mapping ─────────────────────────
+
+    - name: Refresh challenge list from CTFd
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/api/v1/challenges?view=admin"
+        method: GET
+        headers: "{{ _api_headers }}"
+        validate_certs: false
+      register: _refreshed_challenges
+
+    - name: Build challenge name-to-ID mapping
+      ansible.builtin.set_fact:
+        _name_to_id: >-
+          {{ dict(_refreshed_challenges.json.data
+              | map(attribute='name')
+              | zip(_refreshed_challenges.json.data
+              | map(attribute='id'))) }}
+
+    # ── Sync flags and hints per challenge ─────────────────────────
+
+    - name: Sync flags and hints for each challenge
+      ansible.builtin.include_tasks: roles/ctfd/tasks/api_sync_challenge.yml
+      loop: "{{ ctfd_challenges }}"
+      loop_control:
+        loop_var: _challenge
+        label: "{{ _challenge.name }}"
+
+    # ── Set prerequisites ──────────────────────────────────────────
+
+    - name: Set challenge prerequisites
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/api/v1/challenges/{{ _name_to_id[item.name] }}"
+        method: PATCH
+        headers: "{{ _api_headers }}"
+        body_format: json
+        body:
+          requirements:
+            prerequisites: "{{ item.prerequisites | map('extract', _name_to_id) | list }}"
+        validate_certs: false
+        status_code: [200]
+      loop: "{{ ctfd_challenges | selectattr('prerequisites', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Clear prerequisites for challenges without requirements
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/api/v1/challenges/{{ _name_to_id[item.name] }}"
+        method: PATCH
+        headers: "{{ _api_headers }}"
+        body_format: json
+        body:
+          requirements: null
+        validate_certs: false
+        status_code: [200]
+      loop: "{{ ctfd_challenges | rejectattr('prerequisites', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # ── Delete stale challenges ────────────────────────────────────
+
+    - name: Identify challenges to remove
+      ansible.builtin.set_fact:
+        _desired_names: "{{ ctfd_challenges | map(attribute='name') | list }}"
+
+    - name: Delete challenges not in definitions
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/api/v1/challenges/{{ item.id }}"
+        method: DELETE
+        headers: "{{ _api_headers }}"
+        validate_certs: false
+        status_code: [200]
+      loop: "{{ _refreshed_challenges.json.data | rejectattr('name', 'in', _desired_names) | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # ── Cleanup ────────────────────────────────────────────────────
+
+    - name: Revoke API access token
+      ansible.builtin.uri:
+        url: "{{ _ctfd_url }}/api/v1/tokens/{{ _api_token_id }}"
+        method: DELETE
+        headers: "{{ _api_headers }}"
+        validate_certs: false
+        status_code: [200]
+      ignore_errors: true
+
+    - name: Report summary
+      ansible.builtin.debug:
+        msg: >-
+          Challenge sync complete:
+          {{ ctfd_challenges | length }} challenges synced,
+          {{ _refreshed_challenges.json.data
+              | rejectattr('name', 'in', _desired_names)
+              | list | length }} stale challenges removed
+          on {{ _ctfd_url }}

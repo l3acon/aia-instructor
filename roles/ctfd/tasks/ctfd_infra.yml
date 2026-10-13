@@ -1,0 +1,355 @@
+---
+- name: Create {{ project_name }} namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ project_name }}"
+    state: present
+    wait: true
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create CTFd ImageStream
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: image.openshift.io/v1
+      kind: ImageStream
+      metadata:
+        name: ctfd
+        labels:
+          app: ctfd
+      spec:
+        lookupPolicy:
+          local: false
+        tags:
+          - name: latest
+            from:
+              kind: DockerImage
+              name: "ctfd/ctfd:{{ ctfd_image_tag }}"
+            importPolicy:
+              import: true
+              scheduled: true
+    wait: true
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+# --- MySQL ---
+
+- name: Create MySQL PVC
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{ mysql_pvc_name }}"
+        labels:
+          app: "{{ mysql_deployment_name }}"
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: "{{ mysql_pvc_size }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create MySQL Deployment
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: "{{ mysql_deployment_name }}"
+        labels:
+          app: "{{ mysql_deployment_name }}"
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: "{{ mysql_deployment_name }}"
+        strategy:
+          type: Recreate
+        template:
+          metadata:
+            labels:
+              app: "{{ mysql_deployment_name }}"
+          spec:
+            automountServiceAccountToken: false
+            containers:
+              - name: "{{ mysql_deployment_name }}"
+                image: "{{ mysql_image }}"
+                imagePullPolicy: IfNotPresent
+                args:
+                  - mysqld
+                  - --character-set-server=utf8mb4
+                  - --collation-server=utf8mb4_unicode_ci
+                  - --wait_timeout=28800
+                  - --log-warnings=0
+                env:
+                  - name: MYSQL_DATABASE
+                    value: "{{ mysql_database }}"
+                  - name: MYSQL_USER
+                    value: "{{ mysql_user }}"
+                  - name: MYSQL_PASSWORD
+                    value: "{{ mysql_password }}"
+                  - name: MYSQL_ROOT_PASSWORD
+                    value: "{{ mysql_root_password }}"
+                volumeMounts:
+                  - name: mysql-data
+                    mountPath: /var/lib/mysql
+            volumes:
+              - name: mysql-data
+                persistentVolumeClaim:
+                  claimName: "{{ mysql_pvc_name }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create MySQL Service
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ mysql_service_name }}"
+        labels:
+          app: "{{ mysql_deployment_name }}"
+      spec:
+        type: ClusterIP
+        ports:
+          - name: mysql
+            port: 3306
+            targetPort: 3306
+        selector:
+          app: "{{ mysql_deployment_name }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+# --- Redis ---
+
+- name: Create Redis PVC
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{ redis_pvc_name }}"
+        labels:
+          app: "{{ redis_deployment_name }}"
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: "{{ redis_pvc_size }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create Redis Deployment
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: "{{ redis_deployment_name }}"
+        labels:
+          app: "{{ redis_deployment_name }}"
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: "{{ redis_deployment_name }}"
+        strategy:
+          type: Recreate
+        template:
+          metadata:
+            labels:
+              app: "{{ redis_deployment_name }}"
+          spec:
+            automountServiceAccountToken: false
+            containers:
+              - name: "{{ redis_deployment_name }}"
+                image: "{{ redis_image }}"
+                imagePullPolicy: IfNotPresent
+                volumeMounts:
+                  - name: redis-data
+                    mountPath: /data
+            volumes:
+              - name: redis-data
+                persistentVolumeClaim:
+                  claimName: "{{ redis_pvc_name }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create Redis Service
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ redis_service_name }}"
+        labels:
+          app: "{{ redis_deployment_name }}"
+      spec:
+        type: ClusterIP
+        ports:
+          - name: redis
+            port: 6379
+            targetPort: 6379
+        selector:
+          app: "{{ redis_deployment_name }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+# --- CTFd Application ---
+
+- name: Create CTFd logs PVC
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{ ctfd_logs_pvc_name }}"
+        labels:
+          app: ctfd
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: "{{ ctfd_logs_pvc_size }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create CTFd uploads PVC
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{ ctfd_uploads_pvc_name }}"
+        labels:
+          app: ctfd
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: "{{ ctfd_uploads_pvc_size }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create CTFd DeploymentConfig
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: apps.openshift.io/v1
+      kind: DeploymentConfig
+      metadata:
+        name: "{{ ctfd_deployment_name }}"
+        labels:
+          app: ctfd
+      spec:
+        replicas: 1
+        selector:
+          app: ctfd
+        strategy:
+          type: Recreate
+        triggers:
+          - type: ConfigChange
+          - type: ImageChange
+            imageChangeParams:
+              automatic: true
+              containerNames: [ctfd]
+              from:
+                kind: ImageStreamTag
+                name: ctfd:latest
+        template:
+          metadata:
+            labels:
+              app: ctfd
+          spec:
+            automountServiceAccountToken: false
+            containers:
+              - name: ctfd
+                image: ctfd:latest
+                imagePullPolicy: Always
+                env:
+                  - name: ACCESS_LOG
+                    value: "-"
+                  - name: ERROR_LOG
+                    value: "-"
+                  - name: DATABASE_URL
+                    value: "mysql+pymysql://{{ mysql_user }}:{{ mysql_password }}@{{ mysql_service_name }}/{{ mysql_database }}"
+                  - name: REDIS_URL
+                    value: "redis://{{ redis_service_name }}:6379"
+                  - name: LOG_FOLDER
+                    value: /var/log/CTFd
+                  - name: UPLOAD_FOLDER
+                    value: /var/uploads
+                  - name: REVERSE_PROXY
+                    value: "true"
+                  - name: WORKERS
+                    value: "1"
+                volumeMounts:
+                  - name: logs
+                    mountPath: /var/log/CTFd
+                  - name: uploads
+                    mountPath: /var/uploads
+            volumes:
+              - name: logs
+                persistentVolumeClaim:
+                  claimName: "{{ ctfd_logs_pvc_name }}"
+              - name: uploads
+                persistentVolumeClaim:
+                  claimName: "{{ ctfd_uploads_pvc_name }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create CTFd Service
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ ctfd_service_name }}"
+        labels:
+          app: ctfd
+      spec:
+        type: ClusterIP
+        ports:
+          - name: ui
+            port: 8000
+            targetPort: 8000
+        selector:
+          app: ctfd
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Create CTFd Route
+  kubernetes.core.k8s:
+    namespace: "{{ project_name }}"
+    definition:
+      apiVersion: route.openshift.io/v1
+      kind: Route
+      metadata:
+        name: "{{ ctfd_route_name }}"
+        labels:
+          app: ctfd
+      spec:
+        to:
+          kind: Service
+          name: "{{ ctfd_service_name }}"
+          weight: 100
+        port:
+          targetPort: ui
+        tls:
+          termination: edge
+        wildcardPolicy: None
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"

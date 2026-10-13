@@ -1,0 +1,52 @@
+---
+- name: Discover cluster domain
+  when: cluster_domain is not defined
+  block:
+    - name: Get cluster ingress config
+      kubernetes.core.k8s_info:
+        api_version: config.openshift.io/v1
+        kind: Ingress
+        name: cluster
+      register: _ingress_config
+
+    - name: Set cluster domain from ingress
+      ansible.builtin.set_fact:
+        cluster_apps_domain: "{{ _ingress_config.resources[0].spec.domain }}"
+        cluster_domain: "{{ _ingress_config.resources[0].spec.domain | regex_replace('^apps\\.', '') }}"
+
+- name: Set cluster apps domain from provided domain
+  when: cluster_domain is defined and cluster_apps_domain is not defined
+  ansible.builtin.set_fact:
+    cluster_apps_domain: "apps.{{ cluster_domain }}"
+
+- name: Deploy CTFd infrastructure
+  ansible.builtin.include_tasks: ctfd_infra.yml
+  tags: [ctfd-app]
+
+- name: Configure player accounts and namespaces
+  ansible.builtin.include_tasks: players.yml
+  tags: [players]
+
+- name: Deploy Gitea
+  ansible.builtin.include_tasks: gitea.yml
+  tags: [gitea]
+
+- name: Deploy per-player challenge resources
+  ansible.builtin.include_tasks: challenges.yml
+  tags: [challenges]
+
+- name: Build CTFd configuration archive
+  ansible.builtin.include_tasks: ctfd_archive.yml
+  tags: [ctfd-archive]
+
+- name: Upload CTFd configuration
+  ansible.builtin.include_tasks: ctfd_upload.yml
+  tags: [ctfd-upload]
+
+- name: Apply cluster-wide configuration
+  ansible.builtin.include_tasks: cluster_config.yml
+  tags: [cluster-config]
+
+- name: Save and display player credentials
+  ansible.builtin.include_tasks: credentials.yml
+  tags: [credentials]

@@ -1,0 +1,37 @@
+count: {{ player_count | int + 1 }}
+results:
+  - id: 1
+    oauth_id: null
+    name: "{{ ctfd_admin_username }}"
+    password: "{{ _ctfd_admin_password_hash }}"
+    email: "{{ ctfd_admin_email }}"
+    type: admin
+    secret: null
+    website: null
+    affiliation: null
+    country: null
+    bracket: null
+    hidden: 1
+    banned: 0
+    verified: 0
+    team_id: null
+    language: null
+{% for i in range(1, player_count | int + 1) %}
+  - id: {{ i + 1 }}
+    oauth_id: null
+    name: "player{{ i }}"
+    password: "{{ _ctfd_player_password_hashes['player' ~ i] }}"
+    email: "player{{ i }}@example.com"
+    type: user
+    secret: null
+    website: null
+    affiliation: null
+    country: null
+    bracket: null
+    hidden: 0
+    banned: 0
+    verified: 0
+    team_id: null
+    language: null
+{% endfor %}
+meta: {}

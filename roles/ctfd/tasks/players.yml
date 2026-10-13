@@ -1,0 +1,66 @@
+---
+- name: Create player namespaces
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "player{{ item }}"
+    state: present
+    wait: true
+  loop: "{{ range(1, player_count | int + 1) | list }}"
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_retry_delay }}"
+
+- name: Get existing htpasswd secret
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: htpasswd
+    namespace: openshift-config
+  register: _existing_htpasswd
+
+- name: Extract admin entry from existing htpasswd
+  ansible.builtin.set_fact:
+    _admin_htpasswd: >-
+      {{ (_existing_htpasswd.resources[0].data.htpasswd | b64decode).split('\n')
+         | select('match', '^admin:')
+         | join('\n') }}
+  when: _existing_htpasswd.resources | length > 0
+
+- name: Build complete htpasswd content
+  ansible.builtin.set_fact:
+    _full_htpasswd: |-
+      {{ _admin_htpasswd | default('') }}
+      {% for i in range(1, player_count | int + 1) %}
+      player{{ i }}:{{ player_passwords['player' ~ i] | password_hash('bcrypt') }}
+      {% endfor %}
+
+- name: Create htpasswd secret for player accounts
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Secret
+    namespace: openshift-config
+    definition:
+      metadata:
+        name: htpasswd
+      type: Opaque
+      stringData:
+        htpasswd: "{{ _full_htpasswd }}"
+    state: present
+
+- name: Grant edit access to players in their namespaces
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: "player{{ item }}-edit"
+        namespace: "player{{ item }}"
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: edit
+      subjects:
+        - apiGroup: rbac.authorization.k8s.io
+          kind: User
+          name: "player{{ item }}"
+  loop: "{{ range(1, player_count | int + 1) | list }}"

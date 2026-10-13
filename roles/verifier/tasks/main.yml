@@ -1,0 +1,172 @@
+---
+- name: Ensure verifier namespace exists
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ verifier_namespace }}"
+    state: present
+
+- name: Create verifier players ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ verifier_app_name }}-players"
+        namespace: "{{ verifier_namespace }}"
+      data:
+        players.yml: "{{ lookup('file', playbook_dir ~ '/player.creds') }}"
+
+- name: Create verifier Secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ verifier_app_name }}-secret"
+        namespace: "{{ verifier_namespace }}"
+      type: Opaque
+      stringData:
+        hmac-secret: "{{ verifier_hmac_secret }}"
+
+- name: Create verifier BuildConfig
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: build.openshift.io/v1
+      kind: BuildConfig
+      metadata:
+        name: "{{ verifier_app_name }}"
+        namespace: "{{ verifier_namespace }}"
+      spec:
+        output:
+          to:
+            kind: ImageStreamTag
+            name: "{{ verifier_image_name }}:{{ verifier_image_tag }}"
+        source:
+          type: Binary
+        strategy:
+          type: Docker
+          dockerStrategy:
+            dockerfilePath: Containerfile
+
+- name: Create verifier ImageStream
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: image.openshift.io/v1
+      kind: ImageStream
+      metadata:
+        name: "{{ verifier_image_name }}"
+        namespace: "{{ verifier_namespace }}"
+
+- name: Start binary build from solution-verification-app directory
+  ansible.builtin.command:
+    cmd: >-
+      oc start-build {{ verifier_app_name }}
+        --from-dir={{ playbook_dir }}/solution-verification-app
+        --namespace={{ verifier_namespace }}
+        --follow
+        --wait
+  changed_when: true
+
+- name: Deploy verifier application
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: "{{ verifier_app_name }}"
+        namespace: "{{ verifier_namespace }}"
+        labels:
+          app: "{{ verifier_app_name }}"
+      spec:
+        replicas: "{{ verifier_replicas }}"
+        selector:
+          matchLabels:
+            app: "{{ verifier_app_name }}"
+        template:
+          metadata:
+            labels:
+              app: "{{ verifier_app_name }}"
+          spec:
+            containers:
+              - name: verifier
+                image: "{{ verifier_image }}"
+                ports:
+                  - containerPort: "{{ verifier_port }}"
+                env:
+                  - name: VERIFIER_HMAC_SECRET
+                    valueFrom:
+                      secretKeyRef:
+                        name: "{{ verifier_app_name }}-secret"
+                        key: hmac-secret
+                  - name: VERIFIER_PLAYERS_FILE
+                    value: /config/players.yml
+                  - name: VERIFIER_HOST_PATTERN
+                    value: "{{ verifier_host_pattern }}"
+                  - name: VERIFIER_SSH_USER_PATTERN
+                    value: "{{ verifier_ssh_user_pattern }}"
+                  - name: VERIFIER_DOMAIN
+                    value: "{{ verifier_domain | default('') }}"
+                  - name: VERIFIER_SSH_PORT
+                    value: "{{ verifier_ssh_port | string }}"
+                volumeMounts:
+                  - name: players-config
+                    mountPath: /config
+                    readOnly: true
+                readinessProbe:
+                  httpGet:
+                    path: /health
+                    port: "{{ verifier_port }}"
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: "{{ verifier_port }}"
+                  initialDelaySeconds: 10
+                  periodSeconds: 30
+            volumes:
+              - name: players-config
+                configMap:
+                  name: "{{ verifier_app_name }}-players"
+
+- name: Create verifier Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ verifier_app_name }}"
+        namespace: "{{ verifier_namespace }}"
+      spec:
+        selector:
+          app: "{{ verifier_app_name }}"
+        ports:
+          - port: 80
+            targetPort: "{{ verifier_port }}"
+            protocol: TCP
+
+- name: Create verifier Route
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: route.openshift.io/v1
+      kind: Route
+      metadata:
+        name: "{{ verifier_route_name }}"
+        namespace: "{{ verifier_namespace }}"
+      spec:
+        to:
+          kind: Service
+          name: "{{ verifier_app_name }}"
+        port:
+          targetPort: "{{ verifier_port }}"
+        tls:
+          termination: edge
+          insecureEdgeTerminationPolicy: Redirect

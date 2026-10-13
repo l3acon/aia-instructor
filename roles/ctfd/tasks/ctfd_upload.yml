@@ -1,0 +1,250 @@
+---
+- name: Set CTFd base URL
+  ansible.builtin.set_fact:
+    _ctfd_url: "https://{{ ctfd_route_name }}-{{ project_name }}.{{ cluster_apps_domain }}"
+
+- name: Create temporary cookie jar
+  ansible.builtin.tempfile:
+    state: file
+    suffix: .cookies
+  register: _cookie_jar
+
+- name: Wait for CTFd to be healthy
+  ansible.builtin.uri:
+    url: "{{ _ctfd_url }}/healthcheck"
+    method: GET
+    validate_certs: false
+    status_code: [200]
+  retries: 60
+  delay: 10
+  register: _ctfd_health
+  until: _ctfd_health.status == 200
+
+- name: Check if CTFd needs initial setup
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --silent
+      - --insecure
+      - --output
+      - /dev/null
+      - --write-out
+      - "%{http_code}"
+      - --cookie-jar
+      - "{{ _cookie_jar.path }}"
+      - "{{ _ctfd_url }}/setup"
+  register: _setup_status
+  changed_when: false
+
+- name: Complete CTFd initial setup
+  when: _setup_status.stdout == '200'
+  block:
+    - name: Fetch setup page and extract nonce
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --cookie-jar
+          - "{{ _cookie_jar.path }}"
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - "{{ _ctfd_url }}/setup"
+      register: _setup_page
+      changed_when: false
+
+    - name: Extract nonce from setup page
+      ansible.builtin.set_fact:
+        _setup_nonce: "{{ _setup_page.stdout | regex_search('name=\"nonce\"[^>]*value=\"([^\"]+)\"', '\\1') | first }}"
+
+    - name: Submit CTFd setup form
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --output
+          - /dev/null
+          - --write-out
+          - "%{http_code}"
+          - --cookie-jar
+          - "{{ _cookie_jar.path }}"
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - --location
+          - -d
+          - "ctf_name={{ ctfd_name | urlencode }}&ctf_description={{ ctfd_description | urlencode }}&user_mode=users&name={{ ctfd_admin_username | urlencode }}&email={{ ctfd_admin_email | urlencode }}&password={{ ctfd_admin_password | urlencode }}&nonce={{ _setup_nonce }}"
+          - "{{ _ctfd_url }}/setup"
+      register: _setup_submit
+      changed_when: true
+      failed_when: _setup_submit.stdout not in ['200', '302']
+
+- name: Fetch login page and extract nonce
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --silent
+      - --insecure
+      - --cookie-jar
+      - "{{ _cookie_jar.path }}"
+      - --cookie
+      - "{{ _cookie_jar.path }}"
+      - "{{ _ctfd_url }}/login"
+  register: _login_page
+  changed_when: false
+
+- name: Extract nonce from login page
+  ansible.builtin.set_fact:
+    _login_nonce: "{{ _login_page.stdout | regex_search('name=\"nonce\"[^>]*value=\"([^\"]+)\"', '\\1') | first }}"
+
+- name: Login to CTFd as admin
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --silent
+      - --insecure
+      - --output
+      - /dev/null
+      - --write-out
+      - "%{http_code}"
+      - --cookie-jar
+      - "{{ _cookie_jar.path }}"
+      - --cookie
+      - "{{ _cookie_jar.path }}"
+      - --location
+      - -d
+      - "name={{ ctfd_admin_username | urlencode }}&password={{ ctfd_admin_password | urlencode }}&nonce={{ _login_nonce }}"
+      - "{{ _ctfd_url }}/login"
+  register: _login_result
+  changed_when: false
+  failed_when: _login_result.stdout not in ['200', '302']
+
+- name: Fetch admin import page for nonce
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --silent
+      - --insecure
+      - --cookie-jar
+      - "{{ _cookie_jar.path }}"
+      - --cookie
+      - "{{ _cookie_jar.path }}"
+      - "{{ _ctfd_url }}/admin/import"
+  register: _import_page
+  changed_when: false
+
+- name: Extract nonce from import page
+  ansible.builtin.set_fact:
+    _import_nonce: "{{ _import_page.stdout | regex_search(\"csrfNonce.{0,10}?([0-9a-f]{64})\", '\\1') | first }}"
+
+- name: Upload CTFd backup archive
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --silent
+      - --insecure
+      - --output
+      - /dev/null
+      - --write-out
+      - "%{http_code}"
+      - --cookie-jar
+      - "{{ _cookie_jar.path }}"
+      - --cookie
+      - "{{ _cookie_jar.path }}"
+      - -F
+      - "nonce={{ _import_nonce }}"
+      - -F
+      - "backup=@{{ ctfd_archive_path }}"
+      - "{{ _ctfd_url }}/admin/import"
+  register: _upload_result
+  changed_when: true
+  failed_when: _upload_result.stdout not in ['200', '302']
+
+- name: Wait for background import to complete
+  ansible.builtin.pause:
+    seconds: 20
+
+- name: Verify CTFd is healthy after import
+  ansible.builtin.uri:
+    url: "{{ _ctfd_url }}/healthcheck"
+    method: GET
+    validate_certs: false
+    status_code: [200]
+  retries: 30
+  delay: 5
+  register: _post_import_health
+  until: _post_import_health.status == 200
+
+- name: Login after import and verify challenges
+  block:
+    - name: Fetch login page after import
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --cookie-jar
+          - "{{ _cookie_jar.path }}"
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - "{{ _ctfd_url }}/login"
+      register: _verify_login_page
+      changed_when: false
+      retries: 10
+      delay: 5
+      until: _verify_login_page.rc == 0
+
+    - name: Extract nonce for verification login
+      ansible.builtin.set_fact:
+        _verify_nonce: "{{ _verify_login_page.stdout | regex_search('name=\"nonce\"[^>]*value=\"([^\"]+)\"', '\\1') | first }}"
+
+    - name: Login with imported admin credentials
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --output
+          - /dev/null
+          - --write-out
+          - "%{http_code}"
+          - --cookie-jar
+          - "{{ _cookie_jar.path }}"
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - --location
+          - -d
+          - "name={{ ctfd_admin_username | urlencode }}&password={{ ctfd_admin_password | urlencode }}&nonce={{ _verify_nonce }}"
+          - "{{ _ctfd_url }}/login"
+      register: _verify_login
+      changed_when: false
+      failed_when: _verify_login.stdout not in ['200', '302']
+
+    - name: Check challenges are loaded
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --insecure
+          - --cookie
+          - "{{ _cookie_jar.path }}"
+          - "{{ _ctfd_url }}/api/v1/challenges"
+      register: _challenges_check
+      changed_when: false
+
+    - name: Report import result
+      ansible.builtin.debug:
+        msg: >-
+          CTFd import successful -
+          {{ (_challenges_check.stdout | from_json).data | default([]) | length }}
+          challenges loaded at {{ _ctfd_url }}
+
+- name: Clean up cookie jar
+  ansible.builtin.file:
+    path: "{{ _cookie_jar.path }}"
+    state: absent
+
+- name: Clean up CTFd archive zip
+  ansible.builtin.file:
+    path: "{{ ctfd_archive_path }}"
+    state: absent

@@ -1,0 +1,120 @@
+---
+#- name: Create morse-code ConfigMaps
+#  kubernetes.core.k8s:
+#    namespace: "player{{ item }}"
+#    definition:
+#      apiVersion: v1
+#      kind: ConfigMap
+#      metadata:
+#        name: morse-code
+#      data:
+#        morse-code.csv: "{{ morse_code_csv }}"
+#    state: present
+#  loop: "{{ range(1, player_count | int + 1) | list }}"
+#  retries: "{{ k8s_retries }}"
+#  delay: "{{ k8s_retry_delay }}"
+#
+#- name: Create treasure ConfigMaps
+#  kubernetes.core.k8s:
+#    namespace: "player{{ item }}"
+#    definition:
+#      apiVersion: v1
+#      kind: ConfigMap
+#      metadata:
+#        name: treasure
+#      data:
+#        map: "{{ treasure_map_content }}"
+#    state: present
+#  loop: "{{ range(1, player_count | int + 1) | list }}"
+#  retries: "{{ k8s_retries }}"
+#  delay: "{{ k8s_retry_delay }}"
+
+#- name: Read island-logs SQL file
+#  ansible.builtin.set_fact:
+#    _island_logs_sql: "{{ lookup('file', role_path + '/files/island-logs.sql') }}"
+#
+#- name: Create island-logs ConfigMaps
+#  kubernetes.core.k8s:
+#    namespace: "player{{ item }}"
+#    definition:
+#      apiVersion: v1
+#      kind: ConfigMap
+#      metadata:
+#        name: island-logs
+#      data:
+#        island-logs.sql: "{{ _island_logs_sql }}"
+#    state: present
+#  loop: "{{ range(1, player_count | int + 1) | list }}"
+#  retries: "{{ k8s_retries }}"
+#  delay: "{{ k8s_retry_delay }}"
+#
+#- name: Create treasure-key PVCs
+#  kubernetes.core.k8s:
+#    namespace: "player{{ item }}"
+#    definition:
+#      apiVersion: v1
+#      kind: PersistentVolumeClaim
+#      metadata:
+#        name: treasure-key-pvc
+#        labels:
+#          app: treasure-key-pvc
+#      spec:
+#        accessModes: [ReadWriteOnce]
+#        resources:
+#          requests:
+#            storage: 1Mi
+#    wait: true
+#  loop: "{{ range(1, player_count | int + 1) | list }}"
+#  retries: "{{ k8s_retries }}"
+#  delay: "{{ k8s_retry_delay }}"
+#
+#- name: Deploy treasure-key pods to write key to PV
+#  kubernetes.core.k8s:
+#    namespace: "player{{ item }}"
+#    definition:
+#      apiVersion: v1
+#      kind: Pod
+#      metadata:
+#        name: treasure-key-pod
+#      spec:
+#        restartPolicy: OnFailure
+#        initContainers:
+#          - name: write-key
+#            image: "{{ treasure_key_init_image }}"
+#            imagePullPolicy: IfNotPresent
+#            command: ["/bin/bash", "-c"]
+#            args:
+#              - 'echo "{{ treasure_key_content }}" > /tmp/treasure-key/mykey.txt'
+#            volumeMounts:
+#              - name: treasure-key-vol
+#                mountPath: /tmp/treasure-key/
+#        containers:
+#          - name: httpd
+#            image: "{{ treasure_key_image }}"
+#            ports:
+#              - containerPort: 8080
+#                name: http-server
+#            volumeMounts:
+#              - name: treasure-key-vol
+#                mountPath: /tmp/treasure-key/
+#        volumes:
+#          - name: treasure-key-vol
+#            persistentVolumeClaim:
+#              claimName: treasure-key-pvc
+#    wait: true
+#    wait_timeout: 120
+#  loop: "{{ range(1, player_count | int + 1) | list }}"
+#  retries: "{{ k8s_retries }}"
+#  delay: "{{ k8s_retry_delay }}"
+#
+#- name: Delete treasure-key pods after key is written
+#  kubernetes.core.k8s:
+#    api_version: v1
+#    kind: Pod
+#    namespace: "player{{ item }}"
+#    name: treasure-key-pod
+#    state: absent
+#    wait: true
+#  loop: "{{ range(1, player_count | int + 1) | list }}"
+#  retries: "{{ k8s_retries }}"
+#  delay: "{{ k8s_retry_delay }}"

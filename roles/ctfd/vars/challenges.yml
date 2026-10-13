@@ -1,0 +1,468 @@
+---
+# CTFd challenge definitions.
+# Flag values come from the vault-encrypted vars/flags.yml.
+
+ctfd_challenges:
+- name: Write your name in the sand
+  description: 'Write your name in the sand. This way, a search plane might see it and know you are there and come rescue
+    you.
+
+
+    ## Objective:
+
+
+    Your current name is `player<n>`. Please change it to your real name and also add your email address. This will be important
+    to have a chance to win prizes.
+
+
+    ## Specifications:
+
+
+    In the top right corner, click on "Settings"
+
+
+    Change the User Name to your full name: e.g. John Smith
+
+
+    Change the Email address: e.g. jsmith@mycompany.com
+
+
+    Once completed, enter `DONE` in the flag section and click submit to receive your first point!'
+  value: 5
+  category: Warm Up
+  state: visible
+  flags:
+  - content: '{{ ctfd_flags.write_your_name_in_the_sand }}'
+    data: case_insensitive
+- name: Unlock the island
+  description: Wait for the game master to provide a KEY to unlock the rest of the island. Enter this key in the flag section
+    and click submit.
+  value: 5
+  category: Warm Up
+  state: visible
+  flags:
+  - content: '{{ ctfd_flags.unlock_the_island }}'
+    data: case_insensitive
+- name: Ansible Docs
+  description: What is the URL to find documentation about Ansible?
+  value: 10
+  category: Warm Up
+  state: visible
+  flags:
+  - content: '{{ ctfd_flags.ansible_docs }}'
+    type: regex
+    data: case_insensitive
+  hints:
+  - content: Try searching for "Ansible documentation" in your favorite search engine.
+    cost: 2
+- name: Ansible Collections
+  description: There are thousands of Ansible collections that are community-driven. What is the URL to this rich repository
+    of ready-made collections?
+  value: 10
+  category: Warm Up
+  state: visible
+  flags:
+  - content: '{{ ctfd_flags.ansible_collections }}'
+    type: regex
+    data: case_insensitive
+  hints:
+  - content: Ansible's community hub for sharing collections shares its name with something vast and full of stars.
+    cost: 2
+- name: Ansible Certified Collections
+  description: There are hundreds of certified and validated content collections provided with the Ansible Automation Platform
+    subscription, jointly supported through Red Hat and the partner/vendor. Enter the full URL where this content hub can
+    be accessed.
+  value: 15
+  category: Warm Up
+  state: visible
+  prerequisites:
+  - Ansible Collections
+  flags:
+  - content: '{{ ctfd_flags.ansible_certified_collections }}'
+    type: regex
+    data: case_insensitive
+  hints:
+  - content: If you don't have an Ansible Automation Platform subscription, you may not have encountered this certified content
+      repository. Feel free to ask someone who does (or someone that might know about it, like a Red Hatter).
+    cost: 2
+- name: The Navigator's Run
+  description: "The waves lap at your boots as you approach a weathered wooden signpost jutting out of the salt-crusted sand.\
+    \ At first, it looks like a simple pirate\u2019s marker, but as you get closer, you see a shimmering, crystalline interface\
+    \ embedded in the driftwood\u2014a relic?\n\nThe interface pulses with a dim blue light. It doesn\u2019t want a name;\
+    \ it wants to know the version of the automation engine you\u2019ve recovered from the USB stick. To the local Angyar\
+    \ tribes, this is a sacred rune; to you, it is your technical specification.\n\n__Your Task__: Access your terminal and\
+    \ query the Ansible core version running in your environment. Enter that precise version number into the interface to\
+    \ satisfy the signpost and unlock the first map to the interior.\nLog into the instructor-provided VSCode environment\
+    \ and bring up a terminal and obtain the Ansible core version. Enter this version number as the flag.\n\n> A captain who\
+    \ doesn't know the make of his own compass is doomed to sail in circles."
+  value: 25
+  category: Let's get started
+  state: visible
+  prerequisites:
+  - Unlock the island
+  flags:
+  - content: '{{ ctfd_flags.the_navigator_s_run }}'
+    type: regex
+  hints:
+  - content: Log in to the VSCode environment provided by the instructors, find and open a terminal by going to the top menu
+      "Terminal -> New Terminal". Then run the command to show which version of Ansible is available.
+    cost: 2
+  - content: 'There are a number of ways to locate the Ansible version currently installed. Ansible itself will display all
+      version information by running `ansible --version`. Additionally we can query the RHEL package manager to get the package
+      version, `rpm -q ansible-core`. '
+    cost: 10
+- name: The High Tower Signal Strength
+  description: "As you move inland, the island's terrain begins to rise sharply. Squinting against the midday sun, you spot\
+    \ a rhythmic glint atop the island\u2019s highest peak. It\u2019s too steady to be a simple reflection\u2014it\u2019s\
+    \ the pulse of a Signal Tower, a **control center** for the League\u2019s automated defenses.\n\nIn the lore, these towers\
+    \ coordinate the movements of fleets across the stars. Here, it acts as the \"Brain\" of the island. To scavenge any real\
+    \ treasure or plot a course home, you must gain access to this central hub. This isn't just a terminal on your laptop;\
+    \ it\u2019s a Citadel, an inner sanctum in which to bring together those who were previously lost and scattered.\n\n__Your\
+    \ Objective__: Use the coordinates (URL) provided by your instructor to connect to the Ansible Automation Platform. Once\
+    \ you have navigated the gates and logged into the console, find the Platform Version.\n\nThis number represents the current\
+    \ strength of the tower's signal. Enter it here to claim your footing on the mountain.\n\n> A fortress is only as strong\
+    \ as the blueprint it was built upon."
+  value: 25
+  category: Let's get started
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - The Navigator's Run
+  flags:
+  - content: '{{ ctfd_flags.the_high_tower_signal_strength }}'
+    data: case_insensitive
+  hints:
+  - content: After logging in to the Ansible Automation Platform, look for version information on the main dashboard or in
+      the "About" section accessible from the help menu (?).
+    cost: 5
+- name: Ansible Automation Platform Controller Version
+  description: "Deep within the flickering halls of the Citadel, you hear a steady, mechanical thrumming that vibrates through\
+    \ the floorboards. You\u2019ve found the heart of the tower: the **Controller**. If the Citadel is the portal that connects\
+    \ the crew, the Controller is the Chief Officer who executes the orders. It takes your \"Job Templates\"\u2014digital\
+    \ scrolls of command\u2014and orchestrates them into a symphony of tasks across the island. Without this engine, your\
+    \ playbooks are just silent ink; with it, they become the wind in your sails.\n\nTo master this environment, you must\
+    \ identify the specific generation of this Controller. It is not enough to know the version of the Citadel itself; you\
+    \ must find the signature of the underlying executor that drives the work. Navigate within the Citadel's halls and locate\
+    \ the Controller version number.\n\n> A first mate who cannot name his own ship is unfit to command it."
+  value: 25
+  category: Let's get started
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - The High Tower Signal Strength
+  flags:
+  - content: '{{ ctfd_flags.ansible_automation_platform_controller_version }}'
+    data: case_insensitive
+  hints:
+  - content: The Platform Version and the Controller Version are not the same thing. The Controller version can be found under
+      the About dialog or in the footer of the Automation Controller UI.
+    cost: 5
+- name: Great Git-Away
+  description: "The salt spray stings your eyes as you approach the Monolith. Up close, it isn\u2019t stone at all, but a\
+    \ shimmering, obsidian alloy\u2014technology far beyond the wooden skiffs and iron swords of the island\u2019s inhabitants.\n\
+    \nSuddenly, your laptop chirps. The Ansible environment you've powered up has detected a sub-space frequency leaking from\
+    \ the base of the Monolith. It\u2019s not a distress call; it\u2019s a manifest.\n\nGo to your Gitea web portal and find\
+    \ the project created for you there. Enter the name of the repository as the flag for this challenge.\n\n> A manifest\
+    \ is a captain's ledger\u2014know what's in your hold before you set sail."
+  value: 15
+  category: At the Beach
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - The Navigator's Run
+  flags:
+  - content: '{{ ctfd_flags.great_git_away }}'
+    type: regex
+    data: case_insensitive
+  hints:
+  - content: Find the Gitea URL on your handout, open it in a browser, and log in with your access credentials.
+    cost: 2
+  - content: After logging into Gitea, you should see one repository listed on the right side of your dashboard.
+    cost: 5
+- name: Hello World Beach
+  description: "A flickering holographic terminal appears, casting a ghostly blue light over the sand. It speaks of a \"High-Hearth\"\
+    \ repository\u2014a collection of ancient \"League\" scrolls stored in a digital vault. To the primitive tribes of this\
+    \ world, this is a legendary \"Ghost Ship\" of information. To you, it\u2019s a Remote Origin.\n\nGo to VSCode, open a\
+    \ terminal, and clone your `ansible-challenge` repository using git. Run the `hello-world.yml` playbook and enter the\
+    \ keyword from the output.\n\n> To read the scrolls, you must first bring the ship to port."
+  value: 50
+  category: At the Beach
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - Great Git-Away
+  flags:
+  - content: '{{ ctfd_flags.hello_world_beach }}'
+    data: case_insensitive
+  hints:
+  - content: Find the repository URL from the Great Git-Away challenge and use it in VSCode to clone the repository.
+    cost: 2
+  - content: Access VSCode by opening the Workbench URL in your browser. Open a terminal via Terminal -> New Terminal. Copy
+      the repository URL from Gitea (it should look like https://\<gitea\>/\<player\>/ansible-challenge.git). Run `git clone
+      <url>` to clone it, then `cd ansible-challenge` and `ansible-playbook hello-world.yml` to run the playbook.
+    cost: 10
+- name: Message in a Bottle at the Beach
+  description: "Half-buried in the wet sand near the waterline, you spot the glint of green glass. It's a bottle, sealed with\
+    \ wax and barnacles, rolling gently in the surf. Inside, you can see a rolled scrap of parchment\u2014but the text is\
+    \ scrambled, unreadable. This is no ordinary cipher; it bears the mark of an **Ansible Vault**, an ancient League technique\
+    \ for sealing secrets so that only those with the passphrase can read them.\n\nYour repository contains a file called\
+    \ `message-in-a-bottle.txt`. It has been encrypted with `ansible-vault`. The passphrase to break the seal is `redhat`.\n\
+    \nDecrypt the message and enter the full text as your flag.\n\n> The sea keeps many secrets, but the wise know how to\
+    \ unseal them."
+  value: 50
+  category: At the Beach
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - Hello World Beach
+  flags:
+  - content: '{{ ctfd_flags.message_in_a_bottle_at_the_beach }}'
+    data: case_insensitive
+  hints:
+  - content: The `ansible-vault` command can both encrypt and decrypt files. Try `ansible-vault decrypt` or `ansible-vault
+      view` with the `--ask-vault-pass` option.
+    cost: 5
+- name: Hello World Treasure Hunt
+  description: "The beach is behind you now. The jungle path leads uphill toward the Citadel, and the Monolith's shadow stretches\
+    \ long across the canopy. You've proven you can run playbooks from the command line like a lone sailor navigating by the\
+    \ stars\u2014but the League's true power was never in solo voyages. It was in the **Citadel's Controller**, orchestrating\
+    \ entire fleets from a single command chair.\n\nIt's time to bring your work into the tower. Create a **Project** in the\
+    \ AAP Controller using your Gitea `ansible-challenge` repository. Use the `treasurehunt` branch. Then create a **Job Template**\
+    \ with the `hello-world.yml` playbook, and launch it. The Controller will speak\u2014listen for the keyword it reveals.\n\
+    \n> The shore teaches you to survive. The Citadel teaches you to command."
+  value: 75
+  category: Treasure Hunt
+  state: visible
+  prerequisites:
+  - Hello World Beach
+  - Message in a Bottle at the Beach
+  flags:
+  - content: '{{ ctfd_flags.hello_world_treasure_hunt }}'
+    data: case_insensitive
+  hints:
+  - content: In the AAP Controller, go to Automation Execution -> Projects and create a new project pointing to your Gitea
+      repository URL. Set the Source Control Branch to `treasurehunt`. Then go to Automation Execution -> Templates and create
+      a Job Template using this project and the `hello-world.yml` playbook.
+    cost: 10
+- name: Secret Message Treasure Hunt
+  description: "Deeper in the Citadel, you discover a sealed iron chest bolted to the wall. Its lock doesn't take a key\u2014\
+    it takes a **Vault Credential**, a passphrase known only to those trusted by the League. On the beach you cracked a vault\
+    \ by hand; here in the Citadel, the Controller can unseal vaults for you automatically\u2014if you teach it the passphrase.\n\
+    \nCreate a **Vault Credential** within the Automation Platform using the vault password `AAP`. Then create a new **Job\
+    \ Template** that uses this credential alongside the `secret-word.yml` playbook from your project. Launch the job and\
+    \ let the Controller unseal the chest for you.\n\nEnter the secret message revealed in the output.\n\n> A vault without\
+    \ a key is just a box. A vault with the right credential is a gift."
+  value: 75
+  category: Treasure Hunt
+  state: visible
+  prerequisites:
+  - Hello World Treasure Hunt
+  flags:
+  - content: '{{ ctfd_flags.secret_message_treasure_hunt }}'
+    data: case_insensitive
+  hints:
+  - content: Go to Automation Execution -> Infrastructure -> Credentials and create a new credential of type "Vault". Enter
+      `AAP` as the vault password. Then create a new Job Template that uses both this vault credential and the `secret-word.yml`
+      playbook. The secret message will appear in the job output.
+    cost: 10
+- name: You found a treasure chest
+  description: "At the deepest chamber of the Citadel, behind a door sealed with gears and glyphs, you find it: the **Treasure\
+    \ Chest**. But this is no static relic\u2014it's a living deployment, a web server waiting to be raised from the island's\
+    \ stone like a flag over a conquered fortress. The Angyar elders speak of those who could summon entire structures with\
+    \ a single spoken command. Today, you prove you are one of them.\n\nCreate a **Job Template** to deploy a web server using\
+    \ the `apache/apache_role_install.yml` playbook. Attach the workshop **Machine Credential** and the **Vault Credential**\
+    \ you forged earlier, and run it against the workshop inventory. When the server rises, visit the web page it serves\u2014\
+    the treasure keyword awaits.\n\n> The greatest treasure on any island is not gold. It is the power to build something\
+    \ from nothing."
+  value: 100
+  category: Treasure Hunt
+  state: visible
+  flags:
+  - content: '{{ ctfd_flags.you_found_a_treasure_chest }}'
+    data: case_insensitive
+  hints:
+  - content: This challenge has a few built-in obstacles. Firstly, you must use the workshop **Machine Credential** together
+      with the **Workshop Inventory**. Additionally, add the **Vault Credential** you created earlier. Next you must enable
+      **Privilege escalation** to the job template. These are all required for the job to succeed, however, there is one additional
+      hurdle to gain access to the flag, try to work through it on your own before revealing the next hint.
+    cost: 10
+  - content: The job deploys the flag within a website, after it's successful we just need to access it. There are numerous
+      ways to achieve this but a straight-forward method is to use `curl` via the VSCode terminal using the node's FQDN (or
+      IP address).
+    cost: 20
+  prerequisites:
+  - Secret Message Treasure Hunt
+- name: Marooned on World 62
+  description: "You crouch beside a tide pool and notice something odd\u2014a corroded bronze plaque half-buried in the coral.\
+    \ The inscription is worn but legible, and it tells a strange origin story:\n\n*\"The word 'Ansible' was not born of this\
+    \ world. It was first spoken by a chronicler of distant stars, who imagined a device capable of instantaneous communication\
+    \ across the void\u2014no latency, no light-speed barrier. A later storyteller placed one aboard a battle school among\
+    \ the stars, where a child commander used it to coordinate fleets in real-time. Decades after those tales were written,\
+    \ a mortal engineer on Old Earth forged the idea into something real: a tool for commanding legions of machines, agentlessly,\
+    \ across any distance.\"*\n\nThe plaque ends with a question etched in newer, sharper lettering: **Who was this engineer\u2014\
+    the creator of Ansible?**\n\nEnter the creator's first and last name.\n\n> Every great tool has a maker. Every maker has\
+    \ a name worth remembering."
+  value: 10
+  category: Trivia
+  state: visible
+  prerequisites:
+  - Unlock the island
+  flags:
+  - content: '{{ ctfd_flags.marooned_on_world_62 }}'
+    data: case_insensitive
+  hints:
+  - content: The plaque mentions an engineer on "Old Earth" who created Ansible in 2012. Try searching for "who created Ansible
+      automation".
+    cost: 2
+- name: No Strings on the Shoreline
+  description: "Further along the beach, you discover the wreckage of an older expedition. Scattered among the debris are\
+    \ two rusted mechanical contraptions\u2014elaborate marionettes with tangled strings running to heavy iron control boxes.\
+    \ One is carved to look like a wooden puppet dangling from a crossbar; the other resembles a miniature kitchen galley,\
+    \ complete with tiny copper pots, recipe scrolls, and a figurine wearing a chef's toque.\n\nA journal page pinned beneath\
+    \ a rock reads:\n\n*\"Before the Ansible was forged, the old masters ruled through strings and agents. One required a\
+    \ Puppet Master pulling wires to every node. The other demanded a Chef's kitchen\u2014recipes, cookbooks, and a specialized\
+    \ taster stationed on every plate. Both were powerful, but neither could match the elegance of working without strings\
+    \ at all.\"*\n\nThe engineer who created Ansible saw these heavyweight, Ruby-based predecessors and envisioned something\
+    \ leaner\u2014agentless, SSH-native, no master server required. **Which of these predecessors inspired Ansible's streamlined\
+    \ design?** There are two possible answers; enter one or both.\n\n> The best strings are the ones you never need to pull."
+  value: 13
+  category: Trivia
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - Marooned on World 62
+  flags:
+  - content: '{{ ctfd_flags.no_strings_on_the_shoreline }}'
+    type: regex
+    data: case_insensitive
+- name: 'Quest: The Blacksmith''s Hammer'
+  description: 'Somewhere on the island, a medieval realm flickers to life. A blacksmith''s hammer forges new creations from
+    raw metal. Find the chest that holds the secret of **ansible-creator** and return with its flag.
+
+
+    This is an [ansible-quest](https://l3acon.github.io/ansible-quest/) challenge!'
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_blacksmith_s_hammer }}'
+    data: case_insensitive
+- name: 'Quest: The Whetstone'
+  description: 'A dull blade is a dangerous blade. The Whetstone sharpens every edge, catching flaws before they draw the
+    wrong blood. Find the chest that holds the secret of **ansible-lint** and return with its flag.
+
+
+    This is an [ansible-quest](https://l3acon.github.io/ansible-quest/) challenge!'
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_whetstone }}'
+    data: case_insensitive
+- name: 'Quest: The Alchemist''s Mortar'
+  description: 'In the alchemist''s tower, ingredients are ground and mixed in isolation before being unleashed upon the world.
+    Find the chest that holds the secret of **ade** and return with its flag.
+
+
+    This is an [ansible-quest](https://l3acon.github.io/ansible-quest/) challenge!'
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_alchemist_s_mortar }}'
+    data: case_insensitive
+- name: 'Quest: The War Mace'
+  description: 'A war mace tests every joint in a suit of armor. If there is a weakness, the mace will find it. Find the chest
+    that holds the secret of **Molecule** and return with its flag.
+
+
+    This is an [ansible-quest](https://l3acon.github.io/ansible-quest/) challenge!'
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_war_mace }}'
+    data: case_insensitive
+- name: 'Quest: The Crossbow'
+  description: 'The crossbow strikes with precision from a distance, testing defenses at every range. Find the chest that
+    holds the secret of **pytest-ansible** and return with its flag.
+
+
+    This is an [ansible-quest](https://l3acon.github.io/ansible-quest/) challenge!'
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_crossbow }}'
+    data: case_insensitive
+- name: 'Quest: The Battle Axe'
+  description: 'The battle axe cleaves through complexity in a single swing, splitting work across many fronts at once. Find
+    the chest that holds the secret of **tox-ansible** and return with its flag.
+
+
+    This is an [ansible-quest](https://l3acon.github.io/ansible-quest/) challenge!'
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_battle_axe }}'
+    data: case_insensitive
+- name: 'Quest: The Siege Tower'
+  description: 'The siege tower rises from raw timber and iron, a mobile fortress built to carry warriors over any wall. Find
+    the chest that holds the secret of **ansible-builder** and return with its flag.
+
+
+    This is an [ansible-quest](https://l3acon.github.io/ansible-quest/) challenge!'
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_siege_tower }}'
+    data: case_insensitive
+- name: 'Quest: The Royal Seal'
+  description: "No decree leaves the throne room without the Royal Seal\u2014proof of authenticity that cannot be forged.\
+    \ Find the chest that holds the secret of **ansible-sign** and return with its flag.\n\nThis is an [ansible-quest](https://l3acon.github.io/ansible-quest/)\
+    \ challenge!"
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_royal_seal }}'
+    data: case_insensitive
+- name: 'Quest: The Enchanted Compass'
+  description: "The enchanted compass doesn't just point north\u2014it reveals the path through any labyrinth, guiding the\
+    \ bearer with an interactive map of the realm. Find the chest that holds the secret of **ansible-navigator** and return\
+    \ with its flag.\n\nThis is an [ansible-quest](https://l3acon.github.io/ansible-quest/) challenge!"
+  value: 5
+  category: Side Quest
+  state: visible
+  prerequisites:
+  - Unlock the island
+  - No Strings on the Shoreline
+  flags:
+  - content: '{{ ctfd_flags.quest_the_enchanted_compass }}'
+    data: case_insensitive
