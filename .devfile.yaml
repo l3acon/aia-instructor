@@ -1,0 +1,86 @@
+schemaVersion: 2.2.0
+metadata:
+  name: aia-instructor
+  displayName: AIA Instructor — Ansible Island Adventure
+  description: Instructor toolkit for managing CTFd challenges with Ansible dev tools
+attributes:
+  che-code.eclipse.org/vscode-preferences:
+    security.workspace.trust.enabled: false
+
+components:
+  - name: ansible-tools
+    container:
+      image: ghcr.io/ansible/community-ansible-dev-tools:latest
+      memoryLimit: 4Gi
+      memoryRequest: 1Gi
+      cpuLimit: 2000m
+      cpuRequest: 500m
+      mountSources: true
+      sourceMapping: /projects
+      env:
+        - name: ANSIBLE_VAULT_PASSWORD_FILE
+          value: /projects/aia-instructor/.vault-password
+
+commands:
+  - id: view-flags
+    exec:
+      component: ansible-tools
+      commandLine: >-
+        ansible-vault view roles/ctfd/vars/flags.yml
+      workingDir: /projects/aia-instructor
+      label: "View CTFd flags (requires vault password)"
+      group:
+        kind: run
+        isDefault: false
+
+  - id: edit-flags
+    exec:
+      component: ansible-tools
+      commandLine: >-
+        ansible-vault edit roles/ctfd/vars/flags.yml
+      workingDir: /projects/aia-instructor
+      label: "Edit CTFd flags"
+      group:
+        kind: run
+        isDefault: false
+
+  - id: deploy-challenges
+    exec:
+      component: ansible-tools
+      commandLine: >-
+        ansible-playbook update-challenges.yml
+      workingDir: /projects/aia-instructor
+      label: "Deploy challenges to CTFd"
+      group:
+        kind: run
+        isDefault: false
+
+  - id: full-deploy
+    exec:
+      component: ansible-tools
+      commandLine: >-
+        ansible-playbook deploy.yml
+      workingDir: /projects/aia-instructor
+      label: "Full deployment"
+      group:
+        kind: run
+        isDefault: false
+
+  - id: setup-vault-password
+    exec:
+      component: ansible-tools
+      commandLine: |
+        if [ -f .vault-password ]; then
+          echo "Vault password file already exists."
+        else
+          echo "Enter the vault password provided by the event organizer:"
+          read -s VAULT_PW
+          echo "$VAULT_PW" > .vault-password
+          chmod 600 .vault-password
+          echo "Vault password saved to .vault-password"
+        fi
+      workingDir: /projects/aia-instructor
+      label: "Setup vault password"
+      group:
+        kind: build
+        isDefault: false
