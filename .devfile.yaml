@@ -10,7 +10,8 @@ attributes:
 components:
   - name: ansible-tools
     container:
-      image: ghcr.io/ansible/community-ansible-dev-tools:latest
+      # Public Dev Spaces runtime with the Ansible Development Tools bundle.
+      image: ghcr.io/ansible/ansible-devspaces@sha256:12db1db91682f48b9a853d255a7294e3b903d85a4c34ddc6e47e42a9bcc21ecf
       memoryLimit: 4Gi
       memoryRequest: 1Gi
       cpuLimit: 2000m
@@ -22,6 +23,19 @@ components:
           value: /projects/aia-instructor/.vault-password
 
 commands:
+  - id: setup-ansible-collections
+    exec:
+      component: ansible-tools
+      commandLine: >-
+        ansible-galaxy collection install
+        -p /home/user/.ansible/collections
+        kubernetes.core:6.2.0 community.general:11.4.0 ansible.posix:2.1.0
+      workingDir: /projects/aia-instructor
+      label: "Install instructor playbook collections"
+      group:
+        kind: build
+        isDefault: false
+
   - id: view-flags
     exec:
       component: ansible-tools
@@ -84,3 +98,7 @@ commands:
       group:
         kind: build
         isDefault: false
+
+events:
+  postStart:
+    - setup-ansible-collections
