@@ -28,8 +28,8 @@
 
           Use the provisioned lab password supplied privately by your organizer.
           This handout lists existing training accounts; it does not create accounts
-          or recover/reset their passwords. Do not share CTFd administrator access
-          or the instructor vault password with participants.
+          or recover/reset their passwords. Keep CTFd administrator access and the instructor answer files
+          with the facilitator.
 
     - name: Report generated handout
       ansible.builtin.debug:

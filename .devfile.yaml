@@ -87,9 +87,10 @@ commands:
         if [ -f .vault-password ]; then
           echo "Vault password file already exists."
         else
-          echo "Enter the vault password provided by the event organizer:"
-          read -s VAULT_PW
-          echo "$VAULT_PW" > .vault-password
+          echo "Enter your provisioned lab password:"
+          umask 077
+          IFS= read -r -s VAULT_PW
+          printf '%s\n' "$VAULT_PW" > .vault-password
           chmod 600 .vault-password
           echo "Vault password saved to .vault-password"
         fi

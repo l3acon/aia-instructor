@@ -8,12 +8,17 @@ facilitator-training environment. Open your Gitea clone in Dev Spaces using
 
 1. Sign in to OpenShift as your `instructor-<guid>` account. Copy the `oc login`
    command from the console and run it in your workspace terminal.
-2. Store the organizer's vault password in `.vault-password` (one line, mode
-   `0600`). The devfile selects this path automatically. Outside Dev Spaces,
+2. In your provisioned Gitea clone, store your **provisioned lab password** in
+   `.vault-password` (one line, mode `0600`). The devfile selects this path automatically. Outside Dev Spaces,
    add `--vault-password-file .vault-password` to the content commands.
 
-These are the only instructor inputs. The playbooks use the current OpenShift
-identity and its `instructor-<guid>-ctfd` namespace. They verify the `island`
+These are the only instructor inputs. Organizer post-deploy re-keys each Gitea
+clone's existing `roles/ctfd/vars/flags.yml` with that student's lab password,
+without changing its answers. The GitHub/starter source keeps its original vault
+key for organizers; use your provisioned Gitea clone for the lab. Challenge
+vaults in `ansible-survival-kit` keep their own documented passphrases.
+
+The playbooks use the current OpenShift identity and its `instructor-<guid>-ctfd` namespace. They verify the `island`
 route and execute content operations inside `deploy/ctfd` using the instructor's
 existing namespaced permissions. They never log in again or need cluster admin
 access. If access expires, copy a fresh personal login command from the console.
