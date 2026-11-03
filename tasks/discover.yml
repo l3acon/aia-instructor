@@ -1,0 +1,40 @@
+---
+- name: Read the current OpenShift identity
+  ansible.builtin.command: oc whoami
+  register: _aia_identity
+  changed_when: false
+  check_mode: false
+
+- name: Require a personal instructor login
+  ansible.builtin.assert:
+    that:
+      - _aia_identity.stdout is match('^instructor-[a-z0-9][a-z0-9-]*$')
+    fail_msg: Run the oc login command from the console using your instructor account.
+
+- name: Select only this instructor's CTFd namespace
+  ansible.builtin.set_fact:
+    _aia_namespace: "{{ _aia_identity.stdout }}-ctfd"
+
+- name: Discover the personal CTFd route
+  ansible.builtin.command:
+    argv: [oc, get, route, island, -n, "{{ _aia_namespace }}", -o, json]
+  register: _aia_route_raw
+  changed_when: false
+  check_mode: false
+
+- name: Read route information
+  ansible.builtin.set_fact:
+    _aia_route: "{{ _aia_route_raw.stdout | from_json }}"
+
+- name: Verify the route belongs to the personal board
+  ansible.builtin.assert:
+    that:
+      - _aia_route.metadata.namespace == _aia_namespace
+      - _aia_route.spec.to.name == 'ctfd'
+      - _aia_route.spec.host.startswith('island-' ~ _aia_namespace ~ '.')
+      - _aia_route.spec.tls.termination == 'edge'
+    fail_msg: The personal CTFd route does not match the instructor account. Contact the organizer.
+
+- name: Report the selected board
+  ansible.builtin.debug:
+    msg: "{{ _aia_identity.stdout }} → https://{{ _aia_route.spec.host }}"

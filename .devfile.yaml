@@ -64,7 +64,7 @@ commands:
       commandLine: >-
         ansible-playbook update-challenges.yml
       workingDir: /projects/aia-instructor
-      label: "Deploy challenges to CTFd"
+      label: "Update personal board challenges"
       group:
         kind: run
         isDefault: false
@@ -75,7 +75,7 @@ commands:
       commandLine: >-
         ansible-playbook deploy.yml
       workingDir: /projects/aia-instructor
-      label: "Full deployment"
+      label: "Reset personal board progress"
       group:
         kind: run
         isDefault: false

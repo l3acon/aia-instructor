@@ -1,0 +1,42 @@
+---
+- name: Discover the instructor's personal board
+  ansible.builtin.import_tasks: discover.yml
+
+- name: Apply challenge definitions within the personal CTFd pod
+  ansible.builtin.command:
+    argv:
+      - oc
+      - exec
+      - -i
+      - deploy/ctfd
+      - -n
+      - "{{ _aia_namespace }}"
+      - -c
+      - ctfd
+      - --
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', playbook_dir ~ '/files/ctfd_content.py') }}"
+    stdin: >-
+      {{ {'mode': _aia_mode, 'check': ansible_check_mode,
+          'challenges': ctfd_challenges +
+          (ctfd_challenges_advanced if (aia_enable_advanced | default(false) | bool) else [])} | to_json }}
+  register: _aia_content
+  failed_when: false
+  check_mode: false
+  changed_when: "'\"changed\": true' in _aia_content.stdout"
+  no_log: true
+
+- name: Require a successful content operation
+  ansible.builtin.assert:
+    that:
+      - _aia_content.rc == 0
+      - (_aia_content.stdout | regex_findall('(?m)^AIA_RESULT:(.+)$') | length) == 1
+    fail_msg: >-
+      {{ (_aia_content.stderr | regex_findall('(?m)^AIA_ERROR:(.+)$') | first)
+          if 'AIA_ERROR:' in _aia_content.stderr
+          else 'Unable to manage your CTFd board. Check your login, pods/exec access, and CTFd readiness.' }}
+
+- name: Report content changes without answers
+  ansible.builtin.debug:
+    msg: "{{ (_aia_content.stdout | regex_findall('(?m)^AIA_RESULT:(.+)$') | first) | from_json }}"
